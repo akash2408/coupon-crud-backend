@@ -98,6 +98,7 @@ exports.applyCoupon = async (req, res) => {
         for (const data of rows) {
           dfs.push(data.days);
         }
+        dfs.sort();
         if (coupons_used.rows.length === dfs.length) {
           return res.status(400).json({
             success: false,

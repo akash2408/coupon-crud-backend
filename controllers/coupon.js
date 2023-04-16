@@ -23,6 +23,21 @@ exports.createCoupon = async (req, res) => {
     const currDateTime = new Date();
     const created_at = currDateTime.toISOString();
 
+    if (category === CouponCategory.AGE_GROUP) {
+      const { age_groups } = req.body;
+
+      if (age_groups !== undefined && age_groups.length > 0) {
+        for (const data of age_groups) {
+          const { start_age, end_age } = data;
+          if (parseInt(start_age) >= parseInt(end_age)) {
+            return res.status(400).json({
+              success: false,
+              msg: "Age Group is not valid!",
+            });
+          }
+        }
+      }
+    }
     await db.query(`BEGIN`);
 
     const response = await db.query(
