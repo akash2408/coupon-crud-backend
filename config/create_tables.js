@@ -1,4 +1,6 @@
-require("dotenv").config({ path: "../.env" });
+if (process.env.NODE_ENV !== "production") {
+  require("dotenv").config();
+}
 
 const { Pool } = require("pg");
 
@@ -14,11 +16,11 @@ pool.on("connect", () => {
 
 const create_tables = async () => {
   try {
-    await pool.query(`DROP TABLE coupons_for_dfs;`);
-    await pool.query(`DROP TABLE coupons_for_age_groups;`);
-    await pool.query(`DROP TABLE users_coupons;`);
-    await pool.query(`DROP TABLE coupons;`);
-    await pool.query(`DROP TABLE users;`);
+    // await pool.query(`DROP TABLE coupons_for_dfs;`);
+    // await pool.query(`DROP TABLE coupons_for_age_groups;`);
+    // await pool.query(`DROP TABLE users_coupons;`);
+    // await pool.query(`DROP TABLE coupons;`);
+    // await pool.query(`DROP TABLE users;`);
 
     await pool.query(
       `CREATE TABLE users (
