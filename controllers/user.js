@@ -71,95 +71,55 @@ exports.applyCoupon = async (req, res) => {
       couponDetail.end_date !== null ? couponDetail.end_date : undefined;
 
     if (
-      couponStartDate < currDateTime &&
-      (couponEndDate === undefined ||
-        (couponEndDate !== undefined && couponEndDate > currDateTime))
+      (couponStartDate && couponStartDate > currDateTime) ||
+      (couponEndDate && couponEndDate < currDateTime)
     ) {
-      const { coupon_id, discount } = couponDetail;
+      return res.status(400).json({
+        success: false,
+        msg: "Coupon is expired or not yet in use!",
+      });
+    }
 
-      const coupons_used = await db.query(
-        `SELECT * from users_coupons where user_id = $1 and coupon_id = $2;`,
-        [user_id, coupon_id]
-      );
+    const { coupon_id, discount } = couponDetail;
 
-      await db.query(`BEGIN`);
+    const coupons_used = await db.query(
+      `SELECT * from users_coupons where user_id = $1 and coupon_id = $2;`,
+      [user_id, coupon_id]
+    );
 
-      if (couponDetail.category === CouponCategory.DFS) {
-        const userSignupDate = user.created_at;
-        const difference_In_Time =
-          currDateTime.getTime() - userSignupDate.getTime();
-        const number_of_days = difference_In_Time / (1000 * 3600 * 24);
-        const { rows } = await db.query(
-          `SELECT days
+    await db.query(`BEGIN`);
+
+    if (couponDetail.category === CouponCategory.DFS) {
+      const userSignupDate = user.created_at;
+      const difference_In_Time =
+        currDateTime.getTime() - userSignupDate.getTime();
+      const number_of_days = difference_In_Time / (1000 * 3600 * 24);
+
+      const { rows } = await db.query(
+        `SELECT days
              from coupons_for_dfs where coupon_id = $1;`,
-          [coupon_id]
-        );
-        const dfs = [];
-        for (const data of rows) {
-          dfs.push(data.days);
-        }
-        dfs.sort();
-        if (coupons_used.rows.length === dfs.length) {
-          return res.status(400).json({
-            success: false,
-            msg: "Coupon is already claimed!",
-          });
-        }
+        [coupon_id]
+      );
+      const dfs = [];
+      for (const data of rows) {
+        dfs.push(data.days);
+      }
+      dfs.sort();
 
-        let applied = false;
-        let times =
-          coupons_used.rows.length === 0 ? 0 : coupons_used.rows[0].times;
+      if (coupons_used.rows.length === dfs.length) {
+        return res.status(400).json({
+          success: false,
+          msg: "Coupon is already claimed!",
+        });
+      }
 
-        for (const days of dfs.slice(times)) {
-          if (number_of_days >= days) {
-            if (coupons_used.rows.length === 0) {
-              await db.query(
-                `INSERT INTO users_coupons
-             (coupon_id, user_id, times)
-             values ($1, $2, 1)
-             RETURNING *;`,
-                [coupon_id, user_id]
-              );
-            } else {
-              times = times + 1;
-              await db.query(
-                `UPDATE users_coupons
-                    SET times = $1
-                    where coupon_id = $2;`,
-                [times, coupon_id]
-              );
-            }
-            applied = true;
-            break;
-          } else {
-            break;
-          }
-        }
-        if (!applied) {
-          return res.status(400).json({
-            success: false,
-            msg: "Coupon is not valid!",
-          });
-        }
-      } else if (couponDetail.category === CouponCategory.AGE_GROUP) {
-        if (coupons_used.rows.length !== 0) {
-          return res.status(400).json({
-            success: false,
-            msg: "Coupon is already claimed!",
-          });
-        }
-        const { rows } = await db.query(
-          `SELECT start_age, end_age
-             from coupons_for_age_groups where coupon_id = $1;`,
-          [coupon_id]
-        );
+      let applied = false;
+      let times =
+        coupons_used.rows.length === 0 ? 0 : coupons_used.rows[0].times;
 
-        const age_groups = rows;
-        let applied = false;
-        for (const data of age_groups) {
-          const { start_age, end_age } = data;
-
-          if (user.age >= start_age && user.age <= end_age) {
+      for (const days of dfs.slice(times)) {
+        if (number_of_days >= days) {
+          if (coupons_used.rows.length === 0) {
             await db.query(
               `INSERT INTO users_coupons
              (coupon_id, user_id, times)
@@ -167,23 +127,79 @@ exports.applyCoupon = async (req, res) => {
              RETURNING *;`,
               [coupon_id, user_id]
             );
-            applied = true;
-            break;
+          } else {
+            times = times + 1;
+            await db.query(
+              `UPDATE users_coupons
+                    SET times = $1
+                    where coupon_id = $2;`,
+              [times, coupon_id]
+            );
           }
+          applied = true;
+          break;
+        } else {
+          break;
         }
-        if (!applied) {
-          return res.status(400).json({
-            success: false,
-            msg: "Coupon is not valid!",
-          });
+      }
+      if (!applied) {
+        return res.status(400).json({
+          success: false,
+          msg: "Coupon is not valid!",
+        });
+      }
+    } else if (couponDetail.category === CouponCategory.AGE_GROUP) {
+      const { rows } = await db.query(
+        `SELECT start_age, end_age
+             from coupons_for_age_groups where coupon_id = $1;`,
+        [coupon_id]
+      );
+
+      const age_groups = rows;
+      let applied = false;
+      for (const data of age_groups) {
+        const { start_age, end_age } = data;
+
+        if (user.age >= start_age && user.age <= end_age) {
+          if (coupons_used.rows.length !== 0) {
+            let times = coupons_used.rows[0].times;
+            times = times + 1;
+            await db.query(
+              `UPDATE users_coupons
+                    SET times = $1
+                    where coupon_id = $2;`,
+              [times, coupon_id]
+            );
+          } else {
+            await db.query(
+              `INSERT INTO users_coupons
+             (coupon_id, user_id, times)
+             values ($1, $2, 1)
+             RETURNING *;`,
+              [coupon_id, user_id]
+            );
+          }
+          applied = true;
+          break;
         }
+      }
+      if (!applied) {
+        return res.status(400).json({
+          success: false,
+          msg: "Coupon is not valid!",
+        });
+      }
+    } else {
+      if (coupons_used.rows.length !== 0) {
+        let times = coupons_used.rows[0].times;
+        times = times + 1;
+        await db.query(
+          `UPDATE users_coupons
+                    SET times = $1
+                    where coupon_id = $2;`,
+          [times, coupon_id]
+        );
       } else {
-        if (coupons_used.rows.length !== 0) {
-          return res.status(400).json({
-            success: false,
-            msg: "Coupon is already claimed!",
-          });
-        }
         await db.query(
           `INSERT INTO users_coupons
              (coupon_id, user_id, times)
@@ -192,50 +208,45 @@ exports.applyCoupon = async (req, res) => {
           [coupon_id, user_id]
         );
       }
-
-      let discountPrice;
-
-      if (couponDetail.type === CouponTypes.ABSOLUTE) {
-        if (discount < product_price) {
-          discountPrice = product_price - discount;
-        } else {
-          return res.status(400).json({
-            success: false,
-            msg: "Coupon cannot be applied!",
-          });
-        }
-      } else if (couponDetail.type === CouponTypes.FIXED) {
-        if (discount < product_price) {
-          discountPrice = discount;
-        } else {
-          return res.status(400).json({
-            success: false,
-            msg: "Coupon cannot be applied!",
-          });
-        }
-      } else {
-        const perDiscount = product_price - product_price * (discount / 100);
-        if (perDiscount < product_price) {
-          discountPrice = perDiscount;
-        } else {
-          return res.status(400).json({
-            success: false,
-            msg: "Coupon cannot be applied!",
-          });
-        }
-      }
-      await db.query(`COMMIT;`);
-      return res.status(200).json({
-        success: true,
-        msg: "Coupon applied successfully!",
-        discountPrice,
-      });
-    } else {
-      return res.status(400).json({
-        success: false,
-        msg: "Coupon is expired or not yet in use!",
-      });
     }
+
+    let discountPrice;
+
+    if (couponDetail.type === CouponTypes.ABSOLUTE) {
+      if (discount < product_price) {
+        discountPrice = product_price - discount;
+      } else {
+        return res.status(400).json({
+          success: false,
+          msg: "Coupon cannot be applied!",
+        });
+      }
+    } else if (couponDetail.type === CouponTypes.FIXED) {
+      if (discount < product_price) {
+        discountPrice = discount;
+      } else {
+        return res.status(400).json({
+          success: false,
+          msg: "Coupon cannot be applied!",
+        });
+      }
+    } else {
+      const perDiscount = product_price - product_price * (discount / 100);
+      if (perDiscount < product_price) {
+        discountPrice = perDiscount;
+      } else {
+        return res.status(400).json({
+          success: false,
+          msg: "Coupon cannot be applied!",
+        });
+      }
+    }
+    await db.query(`COMMIT;`);
+    return res.status(200).json({
+      success: true,
+      msg: "Coupon applied successfully!",
+      discountPrice,
+    });
   } catch (e) {
     await db.query(`ROLLBACK;`);
     return res.status(400).json({

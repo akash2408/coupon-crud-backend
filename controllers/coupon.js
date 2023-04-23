@@ -8,13 +8,12 @@ exports.createCoupon = async (req, res) => {
 
     if (code.length !== 6) {
       return res.status(400).json({
-        error: e.message,
         success: false,
         msg: "Code is not valid!",
       });
     }
 
-    if (end_date !== undefined && start_date >= end_date) {
+    if (start_date && end_date && start_date > end_date) {
       return res.status(400).json({
         success: false,
         msg: "Start date is not valid!",
@@ -26,10 +25,10 @@ exports.createCoupon = async (req, res) => {
     if (category === CouponCategory.AGE_GROUP) {
       const { age_groups } = req.body;
 
-      if (age_groups !== undefined && age_groups.length > 0) {
+      if (age_groups && age_groups.length > 0) {
         for (const data of age_groups) {
           const { start_age, end_age } = data;
-          if (parseInt(start_age) >= parseInt(end_age)) {
+          if (parseInt(start_age) > parseInt(end_age)) {
             return res.status(400).json({
               success: false,
               msg: "Age Group is not valid!",
@@ -54,7 +53,7 @@ exports.createCoupon = async (req, res) => {
     if (category === CouponCategory.AGE_GROUP) {
       const { age_groups } = req.body;
 
-      if (age_groups !== undefined && age_groups.length > 0) {
+      if (age_groups && age_groups.length > 0) {
         for (const data of age_groups) {
           const { start_age, end_age } = data;
           await db.query(
@@ -67,7 +66,7 @@ exports.createCoupon = async (req, res) => {
       }
     } else if (category === CouponCategory.DFS) {
       const { dfs } = req.body;
-      if (dfs !== undefined && dfs.length > 0) {
+      if (dfs && dfs.length > 0) {
         for (const days of dfs) {
           await db.query(
             `INSERT INTO coupons_for_dfs
@@ -78,6 +77,9 @@ exports.createCoupon = async (req, res) => {
         }
       }
     }
+
+    delete coupon[0].coupon_id;
+
     await db.query(`COMMIT;`);
     return res.status(200).json({
       success: true,
@@ -96,14 +98,64 @@ exports.createCoupon = async (req, res) => {
 
 exports.getAllCoupons = async (req, res) => {
   try {
-    const { rows } = await db.query(
-      `SELECT coupon_id, name, code, type, discount, created_at, deleted_at,start_date, end_date, category
-             from coupons where deleted_at is NULL ORDER BY created_at DESC;`
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    if (page < 0) {
+      return res.status(400).json({
+        success: false,
+        msg: "Page cannot be negative!",
+      });
+    }
+
+    if (limit < 0) {
+      return res.status(400).json({
+        success: false,
+        msg: "Limit cannot be negative!",
+      });
+    }
+    const startIndex = (page - 1) * limit;
+    const endIndex = page * limit;
+    const result = {};
+
+    const rows_count = await db.query(
+      `SELECT COUNT(*)
+             from coupons where deleted_at is NULL;`
     );
+
+    const totalCount = rows_count.rows[0].count;
+    const totalPage = Math.ceil(totalCount / limit);
+
+    if (endIndex < totalCount) {
+      result.next = {
+        page: page + 1,
+        limit: limit,
+      };
+    }
+
+    if (startIndex > 0) {
+      result.previous = {
+        page: page - 1,
+        limit: limit,
+      };
+    }
+
+    result.total = totalCount;
+    result.currentPage = page;
+    result.currentLimit = limit;
+    result.totalPages = totalPage;
+
+    const { rows } = await db.query(
+      `SELECT name, code, type, discount, created_at,start_date, end_date, category
+             from coupons where deleted_at is NULL ORDER BY created_at DESC LIMIT $1 OFFSET $2;`,
+      [limit, startIndex]
+    );
+
+    result.couponsList = rows;
     return res.status(200).json({
       success: true,
       msg: "Coupons Fetch Successfully!",
-      couponsList: rows,
+      result: result,
     });
   } catch (e) {
     return res.status(400).json({
@@ -116,17 +168,15 @@ exports.getAllCoupons = async (req, res) => {
 
 exports.getCoupon = async (req, res) => {
   try {
-    const coupon_id = req.params.id;
+    const code = req.params.code;
 
-    const { rows } = await db.query(
-      `SELECT coupon_id, name, code, type, discount, created_at, deleted_at, start_date, end_date, category
-             from coupons where coupon_id = $1;`,
-      [coupon_id]
-    );
+    const { rows } = await db.query(`SELECT * from coupons where code = $1;`, [
+      code,
+    ]);
 
     const couponDetail = rows[0];
-
-    if (rows.length === 0 || couponDetail.deleted_at !== null) {
+    const { coupon_id } = couponDetail;
+    if (rows.length === 0 || couponDetail.deleted_at) {
       return res.status(400).json({
         success: false,
         msg: "Coupon doesn't exist!",
@@ -152,6 +202,8 @@ exports.getCoupon = async (req, res) => {
       }
     }
 
+    delete rows[0].coupon_id;
+
     return res.status(200).json({
       success: true,
       msg: "Coupon Fetch Successfully!",
@@ -168,16 +220,16 @@ exports.getCoupon = async (req, res) => {
 
 exports.deleteCoupon = async (req, res) => {
   try {
-    const coupon_id = req.params.id;
+    const code = req.params.code;
 
     const { rows } = await db.query(
-      `SELECT coupon_id, deleted_at from coupons where coupon_id = $1;`,
-      [coupon_id]
+      `SELECT coupon_id, deleted_at from coupons where code = $1;`,
+      [code]
     );
 
     const couponDetail = rows[0];
+    const { coupon_id } = couponDetail;
 
-    console.log(couponDetail);
     if (rows.length === 0 || couponDetail.deleted_at !== null) {
       return res.status(400).json({
         success: false,
@@ -215,15 +267,15 @@ exports.deleteCoupon = async (req, res) => {
 
 exports.updateCoupon = async (req, res) => {
   try {
-    const { coupon_id } = req.body;
+    const { code } = req.body;
 
-    const { rows } = await db.query(
-      `SELECT * from coupons where coupon_id = $1;`,
-      [coupon_id]
-    );
+    const { rows } = await db.query(`SELECT * from coupons where code = $1;`, [
+      code,
+    ]);
 
     const currCoupon = rows[0];
 
+    const { coupon_id } = currCoupon;
     if (rows.length === 0 || currCoupon.deleted_at !== null) {
       return res.status(400).json({
         success: false,
@@ -231,15 +283,7 @@ exports.updateCoupon = async (req, res) => {
       });
     }
 
-    const { name, type, discount, start_date, end_date, category, code } =
-      req.body;
-
-    if (code !== undefined) {
-      return res.status(400).json({
-        success: false,
-        msg: "Code updation is not allowed!",
-      });
-    }
+    const { name, type, discount, start_date, end_date, category } = req.body;
 
     const updateFields = {
       name,
@@ -250,10 +294,45 @@ exports.updateCoupon = async (req, res) => {
       category,
     };
 
+    if (start_date && end_date && start_date > end_date) {
+      return res.status(400).json({
+        success: false,
+        msg: "Start date is not valid!",
+      });
+    }
+
+    if (
+      !start_date &&
+      end_date &&
+      currCoupon.start_date &&
+      currCoupon.start_date > end_date
+    ) {
+      return res.status(400).json({
+        success: false,
+        msg: "End date is not valid!",
+      });
+    }
+
+    if (category && category === CouponCategory.AGE_GROUP) {
+      const { age_groups } = req.body;
+
+      if (age_groups && age_groups.length > 0) {
+        for (const data of age_groups) {
+          const { start_age, end_age } = data;
+          if (parseInt(start_age) > parseInt(end_age)) {
+            return res.status(400).json({
+              success: false,
+              msg: "Age Group is not valid!",
+            });
+          }
+        }
+      }
+    }
+
     await db.query(`BEGIN`);
 
     for (const field of Object.keys(updateFields)) {
-      if (updateFields[field] !== undefined) {
+      if (updateFields[field]) {
         await db.query(
           `UPDATE coupons SET
              ${field} = $1
@@ -263,7 +342,7 @@ exports.updateCoupon = async (req, res) => {
       }
     }
 
-    if (category !== undefined && currCoupon.category !== category) {
+    if (category && currCoupon.category !== category) {
       if (currCoupon.category === CouponCategory.AGE_GROUP) {
         await db.query(
           `DELETE from coupons_for_age_groups where coupon_id = $1;`,
@@ -277,7 +356,7 @@ exports.updateCoupon = async (req, res) => {
       if (category === CouponCategory.AGE_GROUP) {
         const { age_groups } = req.body;
 
-        if (age_groups !== undefined && age_groups.length > 0) {
+        if (age_groups && age_groups.length > 0) {
           for (const data of age_groups) {
             const { start_age, end_age } = data;
             await db.query(
@@ -290,7 +369,7 @@ exports.updateCoupon = async (req, res) => {
         }
       } else if (category === CouponCategory.DFS) {
         const { dfs } = req.body;
-        if (dfs !== undefined && dfs.length > 0) {
+        if (dfs && dfs.length > 0) {
           for (const days of dfs) {
             await db.query(
               `INSERT INTO coupons_for_dfs
@@ -395,15 +474,9 @@ exports.updateCoupon = async (req, res) => {
 
     await db.query(`COMMIT;`);
 
-    const updatedCoupon = await db.query(
-      `SELECT * from coupons where coupon_id = $1;`,
-      [coupon_id]
-    );
-
     return res.status(200).json({
       success: true,
       msg: "Coupon Update Successfully!",
-      coupon: updatedCoupon.rows[0],
     });
   } catch (e) {
     await db.query(`ROLLBACK;`);

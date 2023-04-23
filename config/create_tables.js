@@ -20,7 +20,7 @@ const create_tables = async () => {
     // await pool.query(`DROP TABLE coupons_for_age_groups;`);
     // await pool.query(`DROP TABLE users_coupons;`);
     // await pool.query(`DROP TABLE coupons;`);
-    // await pool.query(`DROP TABLE users;`);
+    await pool.query(`DROP TABLE users;`);
 
     await pool.query(
       `CREATE TABLE users (
@@ -33,13 +33,13 @@ const create_tables = async () => {
         );`
     );
 
-    await pool.query(
-      `CREATE TYPE coupon_type AS ENUM ('ABSOLUTE', 'PERCENTAGE', 'FIXED');`
-    );
+    // await pool.query(
+    //   `CREATE TYPE coupon_type AS ENUM ('ABSOLUTE', 'PERCENTAGE', 'FIXED');`
+    // );
 
-    await pool.query(
-      `CREATE TYPE coupon_category AS ENUM ('ALL', 'DFS', 'AGE_GROUP');`
-    );
+    // await pool.query(
+    //   `CREATE TYPE coupon_category AS ENUM ('ALL', 'DFS', 'AGE_GROUP');`
+    // );
 
     await pool.query(
       `CREATE TABLE coupons (
@@ -49,7 +49,7 @@ const create_tables = async () => {
             discount integer NOT NULL,
             created_at timestamptz NOT NULL,
             deleted_at timestamptz,
-            start_date timestamptz NOT NULL,
+            start_date timestamptz,
             end_date timestamptz,
             category coupon_category NOT NULL,
             coupon_id SERIAL,

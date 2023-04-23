@@ -9,11 +9,10 @@ exports.validateCouponRequest = [
   check("type").notEmpty().withMessage("Type must not be empty"),
   check("discount").notEmpty().withMessage("Discount must not be empty"),
   check("category").notEmpty().withMessage("Category must not be empty"),
-  check("start_date").notEmpty().withMessage("Start Date must not be empty"),
 ];
 
 exports.validateCouponUpdateRequest = [
-  check("coupon_id").notEmpty().withMessage("Coupon id must not be empty"),
+  check("code").notEmpty().withMessage("Coupon code must not be empty"),
 ];
 
 exports.isRequestValidated = (req, res, next) => {
