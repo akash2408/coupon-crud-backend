@@ -332,7 +332,10 @@ exports.updateCoupon = async (req, res) => {
     await db.query(`BEGIN`);
 
     for (const field of Object.keys(updateFields)) {
-      if (updateFields[field]) {
+      if (
+        updateFields[field] ||
+        (!updateFields[field] && field === ("start_date" || "end_date"))
+      ) {
         await db.query(
           `UPDATE coupons SET
              ${field} = $1
