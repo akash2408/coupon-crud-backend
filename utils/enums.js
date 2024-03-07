@@ -2,6 +2,7 @@ const CouponTypes = {
   ABSOLUTE: "ABSOLUTE",
   PERCENTAGE: "PERCENTAGE",
   FIXED: "FIXED",
+  
 };
 
 const CouponCategory = {
